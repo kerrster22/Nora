@@ -3,6 +3,7 @@ import time
 
 EvilTemp = 5
 sense = SenseHat()
+lowTemp = False
 
 while True:
   sense.clear()
