@@ -12,7 +12,7 @@ while True:
 
     for x in range (10):    #10 iterations of 30 seconds = 5 min
       time.sleep(30)        #wait 30sec between each check
-      temp = sense.get_temperature
+      temp = sense.get_temperature()
       if temp<=evilTemp:
         lowTempCount +=1
     
@@ -21,6 +21,6 @@ while True:
         sense.clear(colour)
     else:
         sense.clear()
-else:
+  else:
     sense.clear()
-    time.sleep(600)         #check every 10 minutes
+time.sleep(600)         #check every 10 minutes
