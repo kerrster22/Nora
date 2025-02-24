@@ -17,7 +17,7 @@ while True:
         lowTempCount +=1
     
     if lowTempCount >= 6:   #if detected under threshhold more than x times run emergency protocol
-        colour = (225, 0, 0)#red
+        colour = (255, 0, 0)#red
         sense.clear(colour)
     else:
         sense.clear()
