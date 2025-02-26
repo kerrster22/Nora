@@ -1,15 +1,16 @@
 import time
-from sense_hat import SenseHat
 import math
+from sense_hat import SenseHat
 from twilio.rest import Client
 from dotenv import load_dotenv
 import os
+import speech_recognition as sr  # For microphone input
 
 # Load environment variables from the .env file
 load_dotenv()
 
 # Get Twilio Account SID and Auth Token from environment variables
-account_sid = os.getenv('ACCOUNT_SID')  # Ensure these are in your .env file
+account_sid = os.getenv('ACCOUNT_SID')
 auth_token = os.getenv('AUTH_TOKEN')
 
 # Check if the credentials are loaded correctly
@@ -29,9 +30,17 @@ ACCELERATION_THRESHOLD = 2.0  # Adjust based on experimentation
 ROTATION_THRESHOLD = 1.0     # Adjust based on experimentation
 DETECTION_WINDOW = 0.5       # Time window in seconds to detect a fall
 NO_MOVEMENT_THRESHOLD = 10   # Seconds of no movement to trigger emergency
+TEMPERATURE_THRESHOLD = 5    # Temperature in Celsius
+TEMPERATURE_DURATION = 30    # Duration in minutes
 
 # Variables to track the last time movement was detected
 last_move_time = time.time()
+
+# Variables to track the last time a message was sent
+last_message_time = time.time()
+
+# Variables to track temperature duration
+temperature_start_time = None
 
 # Send WhatsApp message function
 def send_whatsapp_message(message_body):
@@ -81,17 +90,72 @@ def check_no_movement():
         return True
     return False
 
+# Function to listen for a 'yes' or 'no' answer from the user using a microphone
+def listen_for_answer(question, timeout=15):
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        print(f"Listening: {question}")
+        recognizer.adjust_for_ambient_noise(source)
+        audio = recognizer.listen(source, timeout=timeout)
+        try:
+            response = recognizer.recognize_google(audio).lower()
+            print(f"User said: {response}")
+            if "yes" in response or "yeah" in response:
+                return True
+            elif "no" in response:
+                return False
+        except sr.UnknownValueError:
+            print("Sorry, I didn't catch that.")
+        except sr.RequestError:
+            print("Could not request results; check your network connection.")
+    return None
+
+# Function to check temperature and send alert if below threshold for specified duration
+def check_temperature():
+    global temperature_start_time
+    current_temperature = sense.get_temperature()
+
+    if current_temperature < TEMPERATURE_THRESHOLD:
+        if temperature_start_time is None:
+            temperature_start_time = time.time()
+        elif time.time() - temperature_start_time >= TEMPERATURE_DURATION * 60:
+            print("Dangerous temperature conditions detected!")
+            send_whatsapp_message('Warning: Temperature has been below 5°C for over 30 minutes.')
+            temperature_start_time = None  # Reset the timer after sending the alert
+    else:
+        temperature_start_time = None  # Reset the timer if temperature is above threshold
+
 # Main function that keeps the program running
 def main():
+    global last_message_time
     try:
         while True:
-            if detect_fall():
-                print("Fall detected!")
-                send_whatsapp_message('Oh no Grandma has fallen down and needs help! Here is where they have fallen.')
+            # Only send messages if 10 minutes have passed since the last message
+            if time.time() - last_message_time >= 600:
+                if detect_fall():
+                    print("Fall detected!")
+                    send_whatsapp_message('Oh no Grandma has fallen down and needs help! Here is where they have fallen.')
+                    last_message_time = time.time()  # Update the last message time
 
-            if check_no_movement():
-                print("No movement detected for 10 seconds. Emergency!")
-                send_whatsapp_message('No movement detected for 10 seconds. Emergency situation.')
+                if check_no_movement():
+                    print("No movement detected for 10 seconds. Emergency!")
+                    send_whatsapp_message('No movement detected for 10 seconds. Emergency situation.')
+                    last_message_time = time.time()  # Update the last message time
+
+                # Ask the user if they have fallen
+                answer1 = listen_for_answer("Have you fallen?", timeout=15)
+                if answer1 is None:
+                    print("Assuming fall as no answer received.")
+                    send_whatsapp_message('Emergency! No response to fall detection.')
+
+                # Ask if they need help
+                answer2 = listen_for_answer("Do you need help?", timeout=15)
+                if answer2 is None:
+                    print("Assuming need for help as no answer received.")
+                    send_whatsapp_message('Emergency! No response to help request.')
+
+            # Check temperature conditions
+            check_temperature()
 
             time.sleep(0.1)  # Adjust based on desired sensitivity
     except KeyboardInterrupt:
